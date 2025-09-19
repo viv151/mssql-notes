@@ -858,9 +858,349 @@ select * from employee
 
 --after trigger for all dml operations on employee table
 
-create trigger tr_employee_allDMLOperations
+create or alter trigger tr_employee_allDMLOperations
 on employee
 after insert, delete, update
 as 
 	begin
+		if exists(select * from inserted) AND NOT exists(select * from deleted)
+			-- if data exists in inserted and not in deleted
+			--then perform the query for insert
+			--query for insert
+			insert into employeeLogs
+			select emp_id, emp_name, emp_salary, emp_id, 'vivek', getdate()
+			from deleted
+
+		else if exists(select * from inserted) AND exists(select * from deleted)
+			--update exists in both magic tables
+			--query for update
+			insert into employeeLogs
+			select emp_id, emp_name, emp_salary, emp_id, 'vivek', getdate()
+			from deleted
+
+		else if exists(select * from deleted) AND not exists(select * from deleted)
+			-- exists in deleted and not in inserted
+			--query for delete
+			insert into employeeLogs
+			select emp_id, emp_name, emp_salary, emp_id, 'vivek', getdate()
+			from deleted
+
+		else 
+			begin
+				print 'nothing changed'
+				return
+			end
+	end
+
+	
+--insert values
+
+insert into employee values(1018, 'vijay1', 50000, 'd3')
+
+select * from employeeLogs
+
+--update values
+update employee
+set emp_salary = 90000 where emp_id = 1008
+
+--delete values
+
+delete from employee  where emp_name='mike'
+
+select * from employeeLogs
+
+
+
+-- 57. DDL Trigger Part-I
+
+-- trigger for when any table is created on the db
+
+create or alter trigger tr_onTableCreate
+on database
+for create_table, drop_table
+as
+	begin
+		DECLARE @eventData XML = EVENTDATA();
+    DECLARE @eventType NVARCHAR(100);
+
+    SET @eventType = @eventData.value('(/EVENT_INSTANCE/EventType)[1]', 'NVARCHAR(100)');
+
+    IF (@eventType = 'CREATE_TABLE')
+    BEGIN
+        PRINT '✅ A new table was created successfully!';
+    END
+    ELSE IF (@eventType = 'DROP_TABLE')
+    BEGIN
+        PRINT '❌ A table was dropped!';
+    END
+    ELSE
+    BEGIN
+        PRINT '⚠️ Some other table-related event happened.';
+    END
+	end
+
+create table sampleTable1
+(id int, name varchar(20))
+
+drop table sampleTable1
+
+
+-- 58. DDL Triggers Part-II
+
+--creating a trigger for sp_rename
+ 
+ create or alter trigger tr_TableRename
+ on database
+ for rename
+ as 
+	begin
+		print 'table is renamed!'
+	end
+
+create table sampleTable1
+(id int, name varchar(20))
+
+
+sp_rename 'sampleTable1', 'troggerDemo'
+
+
+--eventdata()
+--create table to capture data from eventdata
+
+create table ddl_logs(
+	id int identity primary key,
+	event_data xml,
+	performed_by sysname,
+	event_type varchar(200)
+)
+
+--create trigger to capture data from eventdata
+
+create or alter trigger tr_ddlEventTrigger
+on database
+for create_table, rename, drop_table
+as
+	begin
+		insert into ddl_logs(event_data, performed_by, event_type)
+		values (EVENTDATA(), USER, EVENTDATA().value('(/EVENT_INSTANCE/EventType)[1]', 'varchar(max)'))
+	end
+
+--create copy of a table
+
+sp_rename 'troggerDemo', 'triggerdemo' 
+
+select * into demo from triggerdemo
+
+drop table demo
+
+select * from ddl_logs
+
+
+--59. MERGE Statement 
+
+create database airlines
+
+use airlines
+
+create table flightPassengers(
+flightId int identity primary key,
+firstName varchar(20) not null,
+flightCode varchar(20) not null,
+flightDate date not null,
+seat varchar(5)
+)
+
+insert into flightPassengers (firstName ,flightCode, flightDate, seat)
+	values('smith','sql2022', getdate(), '7f'),
+			('adam','sql2022', getdate(), '20a'),
+			('mike','sql2022', getdate(), '4b')
+
+select * from flightPassengers
+
+create table checkIn(
+firstName varchar(20) not null,
+flightCode varchar(20) not null,
+flightDate date not null,
+seat varchar(5)
+)
+
+insert into checkIn (firstName ,flightCode, flightDate, seat)
+	values('smith','sql2022', getdate(), '7f'),
+			('adam','sql2022', getdate(), '2b'),
+			('mike','sql2022', getdate(), '17a')
+
+select * from flightPassengers
+select * from checkIn
+
+
+--merge
+
+merge flightPassengers f --target table
+using checkIn c -- source table
+on c.firstName = f.firstName
+and c.flightCode = f.flightCode
+and c.flightDate = f.flightDate
+
+when matched
+--no need to write table name after update because it knows already
+	then update set f.seat = c.seat
+when not matched by target
+ --columns referred from target table, ie flightPassenger
+	then insert (firstName ,flightCode, flightDate, seat)
+	-- here columns referred from source table, ie checkIn
+		values (firstName ,flightCode, flightDate, seat)
+when not matched by source
+	then delete;
+
+	select * from flightPassengers
+select * from checkIn
+
+
+-- 60. Introduction to Index
+
+ create table employeeDB
+ (
+ id int,
+ name varchar(50),
+ salary decimal,
+ location varchar(50)
+ )
+
+ --insert data in random order
+
+insert into employeeDB values
+(1003, 'smith',65000, 'usa'),
+(1001, 'james',30000, 'india'),
+(1002, 'mike',65000, 'india'),
+(1004, 'john',65000, 'usa')
+
+
+select * from employeeDB
+
+drop table employeeDB
+
+create index idx_employee_salary
+on employeeDB (salary asc)
+
+
+-- 61. Clustered Index
+
+select * from employeeDB
+
+create clustered index idx_employee_name
+on employeeDB(name asc)
+
+drop index idx_employee_name on employeeDb
+
+create clustered index idx_employee_loc
+on employeeDB (id desc, location asc)
+
+
+-- 62. Nonclustered Index
+
+create nonclustered index idx_employee_name
+on employeeDB(name asc)
+
+
+-- 63. Unique Index
+
+create table dept
+(
+did int primary key, -- clustered unique index
+dname varchar(50),
+dloc varchar(50)
+)
+
+insert into dept 
+values (2, 'sales', 'mumbai'),
+(1, 'accounts', 'pune')
+
+select * from dept
+
+
+-- unique dept
+--non clustered unique index
+alter table dept 
+add constraint UQ_dept_dname
+unique (dname)
+
+
+-- independent non- clustered unique index
+
+create unique nonclustered index idx_dept_dloc
+on dept(dloc)
+
+--64. View 
+
+use company_db
+
+select * from employee
+select * from department
+
+--display emp name and salary
+
+select emp_name, emp_salary from employee;
+
+--create view for this query so we dont have to write it again and again
+create view v_empNameSalary
+as select emp_name, emp_salary from employee
+
+-- run the query
+select * from v_empNameSalary
+
+-- display employee details whose dept is sales
+
+select emp_name, emp_salary, dept_name
+from employee e inner join department d
+on e.emp_deptid = d.emp_deptid
+where d.dept_name = 'accounts'
+
+--create view for this query so we dont have to write it again and again
+create view v_empDeailsWithDeptname
+as select emp_name, emp_salary, dept_name
+from employee e inner join department d
+on e.emp_deptid = d.emp_deptid
+where d.dept_name = 'accounts'
+
+-- run the query
+select * from v_empDeailsWithDeptname
+
+
+-- 66. TCL (Commit, Rollback, Save)
+
+
+create table sampleTable(id int)
+
+insert into sampletable values(1)
+insert into sampletable values(2)
+
+begin transaction
+	insert into sampletable values(3)
+	insert into sampletable values(4)
+
+rollback;
+
+begin transaction
+	insert into sampletable values(5)
+	insert into sampletable values(6)
+save transaction A
+
+begin transaction
+	insert into sampletable values(7)
+	insert into sampletable values(8)
+save transaction B
+
+rollback -- removes 3,4,5,6,
+
+rollback transaction A -- removes 7,8 and keeps 5,6
+
+commit
+
+rollback transaction A
+
+select * from sampleTable
+
+
+
+-- 67. Backup and Restore Database
 
